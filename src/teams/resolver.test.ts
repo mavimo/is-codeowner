@@ -176,6 +176,22 @@ describe('createOwnerResolver', () => {
     await expect(r.isOwner(['@acme/eng'], 'alice')).rejects.toBe(err)
   })
 
+  it('does not let one failing owner mask a match from another', async () => {
+    const client: TeamClient = {
+      async isTeamMember(_o, slug) {
+        if (slug === 'bad') throw new Error('boom')
+        await new Promise((r) => setTimeout(r, 5))
+        return true
+      },
+      async listChildTeams() {
+        return []
+      }
+    }
+    const r = createOwnerResolver(client)
+    expect(await r.isOwner(['@acme/bad', '@acme/good'], 'u')).toBe(true)
+    await expect(r.isOwner(['@acme/bad'], 'u')).rejects.toThrow('boom')
+  })
+
   it('does not cache failures', async () => {
     let fail = true
     const client: TeamClient = {
@@ -195,6 +211,20 @@ describe('createOwnerResolver', () => {
 })
 
 describe('createLimiter', () => {
+  it('rejects invalid limits', () => {
+    expect(() => createLimiter(0)).toThrow(RangeError)
+  })
+
+  it('survives tasks that throw synchronously', async () => {
+    const limit = createLimiter(1)
+    await expect(
+      limit((() => {
+        throw new Error('sync')
+      }) as () => Promise<void>)
+    ).rejects.toThrow('sync')
+    expect(await limit(async () => 7)).toBe(7)
+  })
+
   it('runs queued tasks in order and propagates rejections', async () => {
     const limit = createLimiter(1)
     const order: number[] = []

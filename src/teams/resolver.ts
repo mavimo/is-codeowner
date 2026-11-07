@@ -20,16 +20,28 @@ function memo<T>(cache: Map<string, Promise<T>>, key: string, load: () => Promis
   return hit
 }
 
-/** Resolves true as soon as one promise is true; rejects if one rejects before that. */
+/**
+ * Resolves true as soon as one promise is true. If none is true, rejects with the first
+ * error (if any), so a failing owner never masks a match from another owner.
+ */
 function any(promises: Promise<boolean>[]): Promise<boolean> {
   return new Promise((resolve, reject) => {
     let pending = promises.length
+    let firstError: { error: unknown } | undefined
+    const settle = (): void => {
+      if (--pending > 0) return
+      if (firstError) reject(firstError.error)
+      else resolve(false)
+    }
     if (pending === 0) resolve(false)
     for (const p of promises) {
-      p.then((v) => {
-        if (v) resolve(true)
-        else if (--pending === 0) resolve(false)
-      }, reject)
+      p.then(
+        (v) => (v ? resolve(true) : settle()),
+        (error: unknown) => {
+          firstError ??= { error }
+          settle()
+        }
+      )
     }
   })
 }

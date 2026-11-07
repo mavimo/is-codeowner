@@ -57,6 +57,24 @@ describe('createOctokitTeamClient', () => {
       await expect(p).rejects.toThrow(new RegExp(`HTTP ${status}`))
     })
 
+    it.each([
+      ['429', { status: 429, message: 'slow down' }],
+      [
+        '403 retry-after',
+        { status: 403, message: 'x', response: { headers: { 'retry-after': '60' } } }
+      ],
+      [
+        '403 remaining 0',
+        { status: 403, message: 'x', response: { headers: { 'x-ratelimit-remaining': '0' } } }
+      ],
+      ['403 message', { status: 403, message: 'You have exceeded a secondary rate limit' }]
+    ])('reports rate limits distinctly (%s)', async (_n, props) => {
+      getMembership.mockRejectedValue(Object.assign(new Error(props.message), props))
+      const p = createOctokitTeamClient('t').isTeamMember('acme', 'eng', 'alice')
+      await expect(p).rejects.toThrow(/rate limit/i)
+      await expect(p).rejects.not.toThrow(/read:org/)
+    })
+
     it('wraps other errors with context and cause', async () => {
       const cause = httpError(502, 'bad gateway')
       getMembership.mockRejectedValue(cause)
