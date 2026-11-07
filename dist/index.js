@@ -32289,7 +32289,7 @@ function error(message, properties = {}) {
  * @param properties optional properties to add to the annotation.
  */
 function warning(message, properties = {}) {
-    issueCommand('warning', toCommandProperties(properties), message instanceof Error ? message.toString() : message);
+    command_issueCommand('warning', utils_toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
 /**
  * Adds a notice issue
@@ -37927,12 +37927,13 @@ async function checkOwnership(input, deps = defaultDeps) {
 /**
  * Normalize the `files` input: accepts a newline-separated list or, when the trimmed
  * input starts with `[`, a JSON array of strings. Entries are trimmed, blanks dropped
- * and duplicates removed (first occurrence wins).
+ * and duplicates removed (first occurrence wins). Pass `allowJson=false` for auto-detected
+ * lists, where a file name such as `[id]/page.tsx` or `["x"]` must never be sniffed as JSON.
  */
-function normalizeFiles(raw) {
+function normalizeFiles(raw, allowJson = true) {
     const text = raw.trim();
     let entries;
-    if (text.startsWith('[')) {
+    if (allowJson && text.startsWith('[')) {
         let parsed;
         try {
             parsed = JSON.parse(text);
@@ -37970,7 +37971,13 @@ async function run(deps) {
         const token = getInput('token');
         if (token)
             core_setSecret(token);
-        const files = normalizeFiles(getInput('files'));
+        // Explicit `files` input may be a JSON array; auto-detected files (CHANGED_FILES env,
+        // set by action.yml) are always a plain newline list and never JSON-sniffed.
+        const explicit = getInput('files');
+        const detected = explicit.trim() === '';
+        const files = detected
+            ? normalizeFiles(process.env.CHANGED_FILES ?? '', false)
+            : normalizeFiles(explicit);
         const outcome = await checkOwnership({
             user,
             files,
@@ -37982,8 +37989,13 @@ async function run(deps) {
         setOutput('unowned-files', outcome.unownedFiles.join('\n'));
         setOutput('not-owned-files', outcome.notOwnedFiles.join('\n'));
         info(`CODEOWNERS source: ${outcome.source}`);
-        if (files.length === 0)
-            info('No files to check; result is true (vacuously).');
+        if (files.length === 0) {
+            const msg = 'No files to check; result is true (vacuously).';
+            if (detected)
+                warning(`${msg} No changed files were detected; check fetch-depth and event type.`);
+            else
+                info(msg);
+        }
         info(`Checked ${files.length} file(s) for @${user}: ${outcome.result ? 'owner of all' : 'NOT owner of all'}`);
         for (const f of outcome.unownedFiles)
             info(`  unowned: ${f}`);

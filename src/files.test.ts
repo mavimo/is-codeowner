@@ -11,6 +11,9 @@ describe('normalizeFiles', () => {
   it('accepts a JSON array', () => {
     expect(normalizeFiles('["a.ts", " b.ts ", "", "a.ts"]')).toEqual(['a.ts', 'b.ts'])
   })
+  it('does not sniff JSON when disabled', () => {
+    expect(normalizeFiles('["a.ts"]\n[id]/p.ts', false)).toEqual(['["a.ts"]', '[id]/p.ts'])
+  })
   it('rejects invalid JSON', () => {
     expect(() => normalizeFiles('[a.ts')).toThrow(/could not be parsed/)
   })

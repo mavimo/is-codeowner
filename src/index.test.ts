@@ -49,10 +49,26 @@ describe('run', () => {
   })
 
   it('is vacuously true with no files', async () => {
-    inputs({ user: 'alice', files: '', codeowners: '* @bob' })
+    inputs({ user: 'alice', files: '[]', codeowners: '* @bob' })
     await run(deps)
     expect(outputs().result).toBe('true')
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining('vacuously'))
+  })
+
+  it('uses auto-detected CHANGED_FILES without JSON sniffing', async () => {
+    vi.stubEnv('CHANGED_FILES', '["a.ts"]\n[id]/page.ts')
+    inputs({ user: 'alice', files: ' ', codeowners: '* @alice' })
+    await run(deps)
+    expect(outputs().result).toBe('true')
+    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Checked 2 file(s)'))
+    vi.unstubAllEnvs()
+  })
+
+  it('warns when auto-detection finds no files', async () => {
+    inputs({ user: 'alice', files: '', codeowners: '* @bob' })
+    await run(deps)
+    expect(outputs().result).toBe('true')
+    expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('vacuously'))
   })
 
   it('fails when CODEOWNERS is missing', async () => {

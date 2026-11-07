@@ -1,12 +1,13 @@
 /**
  * Normalize the `files` input: accepts a newline-separated list or, when the trimmed
  * input starts with `[`, a JSON array of strings. Entries are trimmed, blanks dropped
- * and duplicates removed (first occurrence wins).
+ * and duplicates removed (first occurrence wins). Pass `allowJson=false` for auto-detected
+ * lists, where a file name such as `[id]/page.tsx` or `["x"]` must never be sniffed as JSON.
  */
-export function normalizeFiles(raw: string): string[] {
+export function normalizeFiles(raw: string, allowJson = true): string[] {
   const text = raw.trim()
   let entries: string[]
-  if (text.startsWith('[')) {
+  if (allowJson && text.startsWith('[')) {
     let parsed: unknown
     try {
       parsed = JSON.parse(text)
