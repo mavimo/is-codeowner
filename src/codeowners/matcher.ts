@@ -20,9 +20,9 @@ export type Matcher = (normalizedPath: string) => boolean
 
 const cache = new Map<string, Matcher | null>()
 
-/** Normalizes a repo-relative path: `\` -> `/`, drops leading `./` and `/`, collapses `//`. */
+/** Normalizes a repo-relative path: drops leading `./` and `/`, collapses `//`. Backslashes are kept: git always reports `/`, and `\` is a legal filename char on Linux. */
 export function normalizePath(filePath: string): string {
-  let p = filePath.replace(/\\/g, '/').replace(/\/{2,}/g, '/')
+  let p = filePath.replace(/\/{2,}/g, '/')
   while (p.startsWith('./')) p = p.slice(2)
   return p.replace(/^\/+/, '').replace(/\/+$/, '')
 }

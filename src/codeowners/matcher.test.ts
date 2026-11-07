@@ -154,10 +154,21 @@ const cases: Record<string, Case[]> = {
     ['/docs/', './docs/a.md', true],
     ['/docs/', '/docs/a.md', true],
     ['/docs/', '././docs/a.md', true],
-    ['/docs/', 'docs\\a.md', true],
-    ['/docs/', '.\\docs\\sub\\a.md', true],
+    ['/docs/', 'docs\\a.md', false],
+    ['/docs/', '.\\docs\\sub\\a.md', false],
+    ['*', 'a\\b', true],
+    ['a\\\\b', 'a\\b', true],
+    ['/a/', 'a\\b/c.txt', false],
+    ['/a\\\\b/', 'a\\b/c.txt', true],
     ['docs/*', 'docs//a.md', true],
     ['*.js', 'src\\a.js', true],
+    ['src/*.js', 'src\\a.js', false],
+    ['a?b', 'a\\b', true],
+    ['a\\*', 'a*', true],
+    ['a\\*', 'a\\x', false],
+    ['foo\\', 'foo\\', true],
+    ['foo\\', 'foo', false],
+    ['*', 'a\\', true],
     ['/docs/', '', false],
     ['*', '', false],
     ['*', '/', false]
@@ -179,7 +190,7 @@ describe('normalizePath', () => {
     ['a/b', 'a/b'],
     ['./a/b', 'a/b'],
     ['/a/b', 'a/b'],
-    ['a\\b\\c', 'a/b/c'],
+    ['a\\b\\c', 'a\\b\\c'],
     ['a//b', 'a/b'],
     ['a/b/', 'a/b'],
     ['./', ''],
@@ -266,10 +277,10 @@ apps/ @octocat
     expect(findOwners(r, 'x')).toEqual(['@a'])
   })
 
-  it('normalizes the queried path', () => {
+  it('normalizes the queried path (but keeps backslashes)', () => {
     const r = parseCodeowners('/src/ @a')
     expect(findOwners(r, './src/x.ts')).toEqual(['@a'])
-    expect(findOwners(r, 'src\\x.ts')).toEqual(['@a'])
+    expect(findOwners(r, 'src\\x.ts')).toBeNull()
     expect(findOwners(r, '/src/x.ts')).toEqual(['@a'])
   })
 

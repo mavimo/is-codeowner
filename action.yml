@@ -13,7 +13,7 @@ inputs:
     required: true
   files:
     description: >-
-      Newline-separated list (or JSON array) of files to check. If empty, changed files are detected
+      Newline-separated list (or JSON array) of files to check, using `/` separators (`\` is treated as part of a file name). If empty, changed files are detected
       automatically with tj-actions/changed-files. An empty list yields result=true (vacuous).
     required: false
     default: ''
