@@ -1,0 +1,32 @@
+name: 'Is Codeowner'
+description: 'Check whether a user owns every changed file according to CODEOWNERS (directly or via team membership)'
+author: 'mavimo'
+branding:
+  icon: shield
+  color: blue
+inputs:
+  user:
+    description: 'GitHub login of the user to check'
+    required: true
+  files:
+    description: 'Newline-separated list of files to check. If empty, changed files are detected automatically.'
+    required: false
+    default: ''
+  codeowners:
+    description: 'CODEOWNERS content. If empty, read from .github/CODEOWNERS, CODEOWNERS or docs/CODEOWNERS.'
+    required: false
+    default: ''
+  token:
+    description: 'Token used to look up team membership'
+    required: false
+    default: ${{ github.token }}
+outputs:
+  result:
+    description: '"true" if the user owns every file, otherwise "false"'
+  unowned-files:
+    description: 'Newline-separated files matched by no CODEOWNERS rule'
+  not-owned-files:
+    description: 'Newline-separated files owned by someone other than the user'
+runs:
+  using: node24
+  main: dist/index.js
