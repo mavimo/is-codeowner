@@ -1,0 +1,149 @@
+name: Dependabot dist rebuild
+
+# Dependabot npm updates change dist/, so `check-dist` fails on those PRs. This workflow rebuilds
+# dist/ and pushes it to the Dependabot branch, then dispatches CI on that branch (a push made
+# with GITHUB_TOKEN does not trigger `pull_request` workflows, but workflow_dispatch is allowed).
+#
+# Security model (pull_request_target runs with a write-capable token, so PR code never gets it):
+#   * `build` checks out and builds the PR head with a read-only token that is not persisted
+#     (contents: read, persist-credentials: false), no secrets and no cache. Dependency install scripts are disabled
+#     (`npm ci --ignore-scripts`), but ncc and other tooling from the PR's node_modules do run
+#     here; that is acceptable only because this job holds no credentials.
+#   * `push` has the write token but never checks out, installs or executes PR files. It checks out
+#     the trusted base branch, fetches the PR head as git objects only, and builds the new commit
+#     with git plumbing (read-tree + update-index) replacing dist/ with validated artifact files.
+#   * Only PRs opened by dependabot[bot] from this same repository are handled.
+#
+# Operational notes:
+#   * The rebuilt commit is authored by github-actions[bot], so Dependabot treats the PR as edited
+#     and will not rebase it; comment `@dependabot recreate` (the dist commit is regenerated).
+#   * The dispatched CI uses ci.yml from the Dependabot branch, which must contain the
+#     `workflow_dispatch` trigger: recreate/rebase Dependabot PRs opened before it was added.
+
+on:
+  pull_request_target:
+    paths:
+      - package.json
+      - package-lock.json
+
+permissions: {}
+
+concurrency:
+  group: dependabot-dist-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build dist
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Read-only is needed to fetch a private repo; credentials are not persisted in the checkout.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - run: npm ci --ignore-scripts
+      - run: npm run package
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  push:
+    name: Commit dist and run CI
+    needs: build
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      # No `ref:`: for pull_request_target this is the trusted base branch, never PR content.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: ${{ runner.temp }}/new-dist
+      - name: Validate artifact
+        env:
+          NEW_DIST: ${{ runner.temp }}/new-dist
+        run: |
+          set -euo pipefail
+          cd "$NEW_DIST"
+          if find . ! -type f ! -type d | grep -q .; then
+            echo "Artifact contains non-regular files (symlink etc.); refusing" >&2
+            exit 1
+          fi
+          count=$(find . -type f | wc -l)
+          if [ "$count" -lt 1 ] || [ "$count" -gt 50 ]; then
+            echo "Unexpected number of files: $count" >&2
+            exit 1
+          fi
+          if find . -type f -size +10M | grep -q .; then
+            echo "A file is larger than 10 MiB; refusing" >&2
+            exit 1
+          fi
+          total=$(find . -type f -exec wc -c {} + | tail -n 1 | awk '{print $1}')
+          if [ "$total" -gt 30000000 ]; then
+            echo "Artifact is larger than 30 MB; refusing" >&2
+            exit 1
+          fi
+          # Only plain relative names: no leading dot segments, no spaces, no traversal.
+          if find . -type f | sed 's|^\./||' | grep -Evq '^[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$'; then
+            echo "Artifact contains unexpected file names; refusing" >&2
+            exit 1
+          fi
+      - name: Commit dist and push
+        id: commit
+        env:
+          NEW_DIST: ${{ runner.temp }}/new-dist
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Objects only: the PR head is never checked out into the working tree.
+          git fetch --no-tags --depth=1 origin "$HEAD_SHA"
+          export GIT_INDEX_FILE="$RUNNER_TEMP/dist-index"
+          git read-tree "$HEAD_SHA"
+          git rm -r --cached -q --ignore-unmatch -- dist
+          (
+            cd "$NEW_DIST"
+            find . -type f | sed 's|^\./||' | sort | while IFS= read -r f; do
+              blob=$(git -C "$GITHUB_WORKSPACE" hash-object -w --no-filters -- "$NEW_DIST/$f")
+              git -C "$GITHUB_WORKSPACE" update-index --add --cacheinfo "100644,$blob,dist/$f"
+            done
+          )
+          tree=$(git write-tree)
+          if [ "$tree" = "$(git rev-parse "$HEAD_SHA^{tree}")" ]; then
+            echo "dist/ already up to date"
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          export GIT_AUTHOR_NAME='github-actions[bot]' GIT_COMMITTER_NAME='github-actions[bot]'
+          export GIT_AUTHOR_EMAIL='41898282+github-actions[bot]@users.noreply.github.com'
+          export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+          commit=$(git commit-tree "$tree" -p "$HEAD_SHA" -m 'chore(deps): rebuild dist' -m 'Generated by the dependabot-dist workflow.')
+          # Rejected (non-fast-forward) if the branch moved since the build; Dependabot then
+          # pushes a new head and this workflow runs again.
+          git push origin "$commit:refs/heads/$HEAD_REF"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+      - name: Run CI on the updated branch
+        if: steps.commit.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_REF"

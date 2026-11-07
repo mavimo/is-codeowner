@@ -1,6 +1,27 @@
 version: 2
 updates:
+  # Workflows under .github/workflows and, for directory "/", also the root action.yml
+  # (the composite action's own SHA-pinned `uses:`). Keep trailing "# vX.Y.Z" comments on pins.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ['*']
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]

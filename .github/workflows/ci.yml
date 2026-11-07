@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Lets dependabot-dist.yml start CI on a branch after it pushed a rebuilt dist/
+  # (pushes made with GITHUB_TOKEN do not trigger pull_request runs).
+  workflow_dispatch:
 
 permissions:
   contents: read
