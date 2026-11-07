@@ -1,8 +1,5 @@
 name: 'Is Codeowner'
-description: >-
-  Check whether a user owns every changed file according to CODEOWNERS (directly or via team membership).
-  The caller must run actions/checkout first (fetch-depth: 0 is recommended so changed files can be
-  detected on pull requests). The token needs read:org to resolve team owners (@org/team).
+description: 'Check whether a user owns every changed file per CODEOWNERS, directly or via team membership.'
 author: 'mavimo'
 branding:
   icon: shield
