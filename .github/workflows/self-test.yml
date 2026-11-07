@@ -1,0 +1,307 @@
+name: Self-test
+
+# Runs the local action (`uses: ./`) against controlled fixtures and asserts its outputs.
+# Team owners (@org/team) are NOT covered here: GITHUB_TOKEN cannot read org team membership,
+# so team resolution is covered by the unit tests in src/teams/ instead. Every CODEOWNERS used
+# below lists users only, so the action never calls the teams API.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: self-test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Inline `codeowners:` input and on-disk CODEOWNERS fixtures (tests/fixtures/disk/<fixture>/).
+  cases:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: user owns all files
+            user: mavimo
+            files: |-
+              src/a.ts
+              docs/b/c.md
+            codeowners: '* @mavimo'
+            result: 'true'
+            unowned: ''
+            not-owned: ''
+
+          - name: one file owned by someone else
+            user: mavimo
+            files: |-
+              src/a.ts
+              other/x.ts
+            codeowners: |-
+              * @mavimo
+              /other/ @someone-else
+            result: 'false'
+            unowned: ''
+            not-owned: other/x.ts
+
+          - name: file matched by no rule
+            user: mavimo
+            files: |-
+              src/a.ts
+              README.md
+            codeowners: /src/ @mavimo
+            result: 'false'
+            unowned: README.md
+            not-owned: ''
+
+          - name: later rule overrides earlier rule (user wins)
+            user: mavimo
+            files: src/a.ts
+            codeowners: |-
+              * @someone-else
+              /src/ @mavimo
+            result: 'true'
+            unowned: ''
+            not-owned: ''
+
+          - name: later rule overrides earlier rule (user loses)
+            user: mavimo
+            files: src/a.ts
+            codeowners: |-
+              /src/ @mavimo
+              * @someone-else
+            result: 'false'
+            unowned: ''
+            not-owned: src/a.ts
+
+          - name: rule without owners un-owns a file
+            user: mavimo
+            files: |-
+              src/a.ts
+              docs/b.md
+            codeowners: |-
+              * @mavimo
+              /docs/
+            result: 'false'
+            unowned: docs/b.md
+            not-owned: ''
+
+          - name: files as JSON array
+            user: mavimo
+            files: '["src/a.ts","src/b.ts"]'
+            codeowners: /src/ @mavimo
+            result: 'true'
+            unowned: ''
+            not-owned: ''
+
+          - name: files as JSON array with a non-owned file
+            user: mavimo
+            files: '["src/a.ts","lib/b.ts"]'
+            codeowners: |-
+              /src/ @mavimo
+              /lib/ @someone-else
+            result: 'false'
+            unowned: ''
+            not-owned: lib/b.ts
+
+          - name: explicit empty file list is vacuously true
+            user: mavimo
+            files: '[]'
+            codeowners: '* @someone-else'
+            result: 'true'
+            unowned: ''
+            not-owned: ''
+
+          - name: backslash in a file name is not a separator
+            user: mavimo
+            files: 'weird\name.txt'
+            codeowners: |-
+              * @mavimo
+              /weird/ @someone-else
+            result: 'true'
+            unowned: ''
+            not-owned: ''
+
+          - name: CODEOWNERS read from .github/
+            user: mavimo
+            files: x.txt
+            fixture: dot-gh
+            codeowners: ''
+            result: 'true'
+            unowned: ''
+            not-owned: ''
+
+          - name: CODEOWNERS read from the repository root
+            user: mavimo
+            files: x.txt
+            fixture: root
+            codeowners: ''
+            result: 'true'
+            unowned: ''
+            not-owned: ''
+
+          - name: CODEOWNERS read from docs/
+            user: mavimo
+            files: x.txt
+            fixture: docs
+            codeowners: ''
+            result: 'false'
+            unowned: ''
+            not-owned: x.txt
+
+          - name: priority .github/ over root and docs/
+            user: mavimo
+            files: x.txt
+            fixture: priority-dot-gh
+            codeowners: ''
+            result: 'true'
+            unowned: ''
+            not-owned: ''
+
+          - name: priority root over docs/
+            user: mavimo
+            files: x.txt
+            fixture: priority-root
+            codeowners: ''
+            result: 'true'
+            unowned: ''
+            not-owned: ''
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install on-disk CODEOWNERS fixture
+        if: matrix.fixture
+        env:
+          FIXTURE: ${{ matrix.fixture }}
+        run: |
+          rm -f .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS
+          cp -R "tests/fixtures/disk/$FIXTURE/." .
+
+      - name: Run the action
+        id: action
+        uses: ./
+        with:
+          user: ${{ matrix.user }}
+          files: ${{ matrix.files }}
+          codeowners: ${{ matrix.codeowners }}
+
+      - name: Assert outputs
+        env:
+          EXPECTED_RESULT: ${{ matrix.result }}
+          EXPECTED_UNOWNED: ${{ matrix.unowned }}
+          EXPECTED_NOT_OWNED: ${{ matrix.not-owned }}
+          ACTUAL_RESULT: ${{ steps.action.outputs.result }}
+          ACTUAL_UNOWNED: ${{ steps.action.outputs.unowned-files }}
+          ACTUAL_NOT_OWNED: ${{ steps.action.outputs.not-owned-files }}
+        run: |
+          failed=0
+          bash tests/assert-eq.sh result "$EXPECTED_RESULT" "$ACTUAL_RESULT" || failed=1
+          bash tests/assert-eq.sh unowned-files "$EXPECTED_UNOWNED" "$ACTUAL_UNOWNED" || failed=1
+          bash tests/assert-eq.sh not-owned-files "$EXPECTED_NOT_OWNED" "$ACTUAL_NOT_OWNED" || failed=1
+          exit "$failed"
+
+  missing-codeowners:
+    name: missing CODEOWNERS fails the step
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Remove every CODEOWNERS location
+        run: rm -f .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS
+
+      - name: Run the action
+        id: action
+        uses: ./
+        continue-on-error: true
+        with:
+          user: mavimo
+          files: x.txt
+
+      - name: Assert the action failed
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          ACTUAL_RESULT: ${{ steps.action.outputs.result }}
+        run: |
+          bash tests/assert-eq.sh outcome failure "$OUTCOME"
+          # a failure before the check ran (e.g. setup) would also set no result; the error
+          # message itself is asserted in the unit tests (src/check.test.ts)
+          bash tests/assert-eq.sh result-unset "" "$ACTUAL_RESULT"
+
+  auto-detect:
+    # Changed files are detected with tj-actions/changed-files, which needs a pull_request diff.
+    name: auto-detected changed files
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: user owns every changed file
+            user: mavimo
+            result: 'true'
+          - name: user does not own the changed files
+            user: someone-else
+            result: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Write a controlled CODEOWNERS
+        run: |
+          mkdir -p .github
+          printf '* @mavimo\n' > .github/CODEOWNERS
+
+      - name: Run the action (files left blank)
+        id: action
+        uses: ./
+        with:
+          user: ${{ matrix.user }}
+
+      - name: Assert result
+        env:
+          EXPECTED_RESULT: ${{ matrix.result }}
+          ACTUAL_RESULT: ${{ steps.action.outputs.result }}
+          ACTUAL_NOT_OWNED: ${{ steps.action.outputs.not-owned-files }}
+        run: |
+          bash tests/assert-eq.sh result "$EXPECTED_RESULT" "$ACTUAL_RESULT"
+          # With no detected files the result would be vacuously true, so on the "false" leg
+          # also require a non-empty list: this proves files were actually detected.
+          if [ "$EXPECTED_RESULT" = "false" ] && [ -z "$ACTUAL_NOT_OWNED" ]; then
+            echo "::error::no changed files were detected" >&2
+            exit 1
+          fi
+
+  self-test-success:
+    name: self-test-success
+    if: always()
+    needs: [cases, missing-codeowners, auto-detect]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify all jobs succeeded
+        env:
+          CASES: ${{ needs.cases.result }}
+          MISSING: ${{ needs.missing-codeowners.result }}
+          AUTO_DETECT: ${{ needs.auto-detect.result }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          echo "cases=$CASES missing-codeowners=$MISSING auto-detect=$AUTO_DETECT"
+          [ "$CASES" = "success" ] && [ "$MISSING" = "success" ] || { echo "A required job did not succeed" >&2; exit 1; }
+          # auto-detect only runs on pull_request events
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            [ "$AUTO_DETECT" = "success" ] || { echo "auto-detect did not succeed" >&2; exit 1; }
+          fi
