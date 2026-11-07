@@ -1,6 +1,7 @@
 # is-codeowner
 
 [![CI](https://github.com/mavimo/is-codeowner/actions/workflows/ci.yml/badge.svg)](https://github.com/mavimo/is-codeowner/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/mavimo/is-codeowner/graph/badge.svg)](https://codecov.io/gh/mavimo/is-codeowner)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A composite GitHub Action that checks whether a user owns **every** changed file according to the
