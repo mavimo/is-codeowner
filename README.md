@@ -1,6 +1,6 @@
-# action-is-codeowner
+# is-codeowner
 
-[![CI](https://github.com/mavimo/action-is-codeowner/actions/workflows/ci.yml/badge.svg)](https://github.com/mavimo/action-is-codeowner/actions/workflows/ci.yml)
+[![CI](https://github.com/mavimo/is-codeowner/actions/workflows/ci.yml/badge.svg)](https://github.com/mavimo/is-codeowner/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A composite GitHub Action that checks whether a user owns **every** changed file according to the
@@ -11,7 +11,7 @@ Typical uses: auto-approve or enable auto-merge on PRs whose author owns all tou
 job (deploy, label, notify) on ownership.
 
 This repository is private and the action is consumed directly from it
-(`uses: mavimo/action-is-codeowner@<ref>`); it is not published on the Marketplace.
+(`uses: mavimo/is-codeowner@<ref>`); it is not published on the Marketplace.
 
 ## Quick start
 
@@ -28,7 +28,7 @@ jobs:
           fetch-depth: 0 # needed so changed files can be detected
           persist-credentials: false
       - id: owner
-        uses: mavimo/action-is-codeowner@<full-sha>
+        uses: mavimo/is-codeowner@<full-sha>
         with:
           user: ${{ github.event.pull_request.user.login }}
       - run: echo "owns everything: $RESULT"
@@ -85,7 +85,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: mavimo/action-is-codeowner@<full-sha>
+      - uses: mavimo/is-codeowner@<full-sha>
         id: owner
         with:
           user: ${{ github.event.pull_request.user.login }}
@@ -100,7 +100,7 @@ jobs:
 ### Explicit file list
 
 ```yaml
-- uses: mavimo/action-is-codeowner@<full-sha>
+- uses: mavimo/is-codeowner@<full-sha>
   with:
     user: octocat
     files: |
@@ -112,7 +112,7 @@ jobs:
 ### Inline CODEOWNERS
 
 ```yaml
-- uses: mavimo/action-is-codeowner@<full-sha>
+- uses: mavimo/is-codeowner@<full-sha>
   with:
     user: octocat
     files: src/app.ts
@@ -141,7 +141,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - id: owner
-        uses: mavimo/action-is-codeowner@<full-sha>
+        uses: mavimo/is-codeowner@<full-sha>
         with:
           user: ${{ github.event.pull_request.user.login }}
           token: ${{ secrets.ORG_READ_TOKEN }} # only needed for team owners
