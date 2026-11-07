@@ -80,7 +80,7 @@ jobs:
             unowned: ''
             not-owned: src/a.ts
 
-          - name: rule without owners un-owns a file
+          - name: rule without owners removes ownership (reported as not owned)
             user: mavimo
             files: |-
               src/a.ts
@@ -89,8 +89,8 @@ jobs:
               * @mavimo
               /docs/
             result: 'false'
-            unowned: docs/b.md
-            not-owned: ''
+            unowned: ''
+            not-owned: docs/b.md
 
           - name: files as JSON array
             user: mavimo
