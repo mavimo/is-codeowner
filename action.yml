@@ -1,5 +1,8 @@
 name: 'Is Codeowner'
-description: 'Check whether a user owns every changed file according to CODEOWNERS (directly or via team membership)'
+description: >-
+  Check whether a user owns every changed file according to CODEOWNERS (directly or via team membership).
+  The caller must run actions/checkout first (fetch-depth: 0 is recommended so changed files can be
+  detected on pull requests). The token needs read:org to resolve team owners (@org/team).
 author: 'mavimo'
 branding:
   icon: shield
@@ -9,7 +12,9 @@ inputs:
     description: 'GitHub login of the user to check'
     required: true
   files:
-    description: 'Newline-separated list of files to check. If empty, changed files are detected automatically.'
+    description: >-
+      Newline-separated list (or JSON array) of files to check. If empty, changed files are detected
+      automatically with tj-actions/changed-files. An empty list yields result=true (vacuous).
     required: false
     default: ''
   codeowners:
@@ -17,16 +22,49 @@ inputs:
     required: false
     default: ''
   token:
-    description: 'Token used to look up team membership'
+    description: 'Token used to look up team membership (needs read:org for team owners; unused for user-only CODEOWNERS)'
     required: false
     default: ${{ github.token }}
 outputs:
   result:
-    description: '"true" if the user owns every file, otherwise "false"'
+    description: '"true" if the user owns every file (also when there are no files), otherwise "false"'
+    value: ${{ steps.check.outputs.result }}
   unowned-files:
     description: 'Newline-separated files matched by no CODEOWNERS rule'
+    value: ${{ steps.check.outputs.unowned-files }}
   not-owned-files:
     description: 'Newline-separated files owned by someone other than the user'
+    value: ${{ steps.check.outputs.not-owned-files }}
 runs:
-  using: node24
-  main: dist/index.js
+  using: composite
+  steps:
+    - name: Set up Node.js
+      # v7.1.0 pinned to a full commit SHA; the bundled dist requires Node >= 24.
+      uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+      with:
+        node-version: '24'
+
+    - name: Detect changed files
+      id: changed
+      if: trim(inputs.files) == ''
+      # v47.0.6 (released after the March 2025 CVE-2025-30066 compromise), pinned to a full commit SHA.
+      uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96
+      with:
+        separator: "\n"
+        # Raw names: the output is only ever passed through env vars, never interpolated into a script.
+        safe_output: false
+        quotepath: false
+
+    - name: Check CODEOWNERS ownership
+      id: check
+      shell: bash
+      env:
+        INPUT_USER: ${{ inputs.user }}
+        INPUT_FILES: ${{ inputs.files }}
+        # Auto-detected list, kept separate so it is never parsed as JSON. Deleted files are
+        # included: removing a file you do not own is a change you do not own. Very large PRs
+        # may exceed the ~128 KiB per-env-var limit and fail (safe); pass fewer files then.
+        CHANGED_FILES: ${{ steps.changed.outputs.all_changed_and_modified_files }}
+        INPUT_CODEOWNERS: ${{ inputs.codeowners }}
+        INPUT_TOKEN: ${{ inputs.token }}
+      run: node "$GITHUB_ACTION_PATH/dist/index.js"
