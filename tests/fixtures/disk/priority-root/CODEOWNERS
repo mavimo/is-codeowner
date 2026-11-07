@@ -1,0 +1,2 @@
+# Fixture: root wins over docs/ when .github/ has none (user owns everything here)
+* @mavimo
