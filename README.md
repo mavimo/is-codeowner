@@ -48,7 +48,10 @@ Node 24 itself.
 | `codeowners` | no       | `''`           | CODEOWNERS content. If empty, the file is read from the workspace (see [resolution](#codeowners-resolution)).                                     |
 | `token`      | no       | `github.token` | Token for team lookups. Only used when a matching rule names a team; see [team handling](#team-handling-and-tokens).                              |
 
-Duplicate and blank entries in `files` are dropped.
+Duplicate and blank entries in `files` are dropped. If the explicit `files` value starts with `[` it is
+parsed as a JSON array (the step fails if it is not valid JSON), so use the JSON form for names such
+as `[id]/page.tsx`. Auto-detected files are never parsed as JSON. On `push` events there is no PR
+author, so pass `user` explicitly there.
 
 ## Outputs
 
@@ -194,7 +197,10 @@ Deviations and unsupported features (most mirror GitHub itself):
 - No GitLab sections: `[Section]` / `^[Section]` are treated as literal patterns, not headers.
 - Lines containing an invalid owner are skipped entirely (as GitHub does), so a typo can leave files
   unowned or owned by an earlier, broader rule.
-- Owner names are compared case-insensitively.
+- Owner names are compared case-insensitively; file paths are matched case-sensitively and are
+  normalised first (`\` becomes `/`, a leading `./` is dropped).
+- Bot accounts such as `dependabot[bot]` cannot be owners (the brackets make the line invalid, so it
+  is skipped).
 - An email owner only matches if the `user` input is literally that string, so in practice it never
   matches a login.
 - This is a local reimplementation; it does not reproduce GitHub's own CODEOWNERS error reporting or
@@ -221,11 +227,14 @@ auto-detected. A misconfiguration can therefore silently pass:
 
 - Use `fetch-depth: 0` in `actions/checkout`. With a shallow clone changed files may be missing or
   incomplete.
-- Auto-detection depends on the event (pull requests, pushes). On other events pass `files`.
+- Auto-detection depends on the event (pull requests, pushes). On other events, or on force pushes
+  and new branches where the base is unclear, pass `files`.
+- Renames: only what `tj-actions/changed-files` reports is checked (typically the new path), so make
+  sure moves out of directories you do not own are covered by your review rules.
 - If you auto-approve or auto-merge on `result`, make sure the file list is not unexpectedly empty
   (for example by passing `files` yourself).
-- Very large PRs may exceed the ~128 KiB environment variable limit; the step then fails (safe) and
-  you should pass a smaller `files` list.
+- Very large PRs may exceed the ~128 KiB environment variable limit and the step fails (safe). Split
+  the check across several steps with smaller `files` lists.
 
 ## Security notes
 
@@ -236,6 +245,15 @@ auto-detected. A misconfiguration can therefore silently pass:
   March 2025 compromise (CVE-2025-30066). If you bump it, keep the SHA pin and review the diff.
 - CODEOWNERS globs are matched without regular expressions, so a hostile CODEOWNERS file cannot cause
   catastrophic backtracking.
+- **CODEOWNERS is read from the checked-out workspace.** On `pull_request` that is the PR merge
+  commit, so a PR can edit CODEOWNERS to grant its author ownership of everything. Before
+  auto-approving or auto-merging, take CODEOWNERS from the base branch (check out `github.base_ref`
+  into a second path and pass its content via `codeowners:`), and protect the CODEOWNERS file itself
+  with a rule that someone else owns.
+- Auto-merge is only a meaningful gate when the target branch has required checks or reviews;
+  `gh pr merge --auto` may merge immediately otherwise.
+- Secrets (such as a `read:org` token) are empty on PRs from forks. An empty `token:` makes team
+  lookups fail or report `false`; skip the job for fork PRs.
 - Use a least-privilege `permissions:` block. This action needs only `contents: read` (for checkout);
   grant `pull-requests: write` / `contents: write` only to the job that acts on the result.
 - Prefer `pull_request` over `pull_request_target`. If you must use `pull_request_target`, never
@@ -248,7 +266,8 @@ auto-detected. A misconfiguration can therefore silently pass:
 ## Limitations
 
 - Local reimplementation of CODEOWNERS semantics; edge cases may differ from GitHub's evaluation.
-- Only the paths reported by `tj-actions/changed-files` are checked.
+- Only the paths reported by `tj-actions/changed-files` are checked; file names containing newlines
+  are split into separate entries (pass a JSON `files` list if that matters).
 - Team lookups need a privileged token and one or more API calls per distinct team.
 
 ## Development
