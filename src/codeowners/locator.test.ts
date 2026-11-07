@@ -69,6 +69,11 @@ describe('locateCodeowners', () => {
     expect(await locateCodeowners(root)).toEqual({ path: 'CODEOWNERS', content: '' })
   })
 
+  it('rejects CODEOWNERS files over 3 MB', async () => {
+    await put('CODEOWNERS', 'x'.repeat(3 * 1024 * 1024 + 1))
+    await expect(locateCodeowners(root)).rejects.toThrow(/3 MB/)
+  })
+
   it('propagates unexpected I/O errors', async () => {
     await expect(locateCodeowners('bad\0path')).rejects.toThrow()
   })

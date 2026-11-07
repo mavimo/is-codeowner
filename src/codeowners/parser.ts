@@ -21,7 +21,7 @@ function tokenize(line: string): string[] {
       current += ch + line.charAt(i + 1)
       inToken = true
       i++
-    } else if (ch === ' ' || ch === '\t') {
+    } else if (/\s/.test(ch)) {
       if (inToken) tokens.push(current)
       current = ''
       inToken = false
@@ -38,9 +38,10 @@ function tokenize(line: string): string[] {
 
 /** An owner is `@user`, `@org/team` or an email address. */
 function isValidOwner(owner: string): boolean {
-  if (owner.startsWith('@')) return owner.length > 1 && !owner.includes('@', 1)
-  const at = owner.indexOf('@')
-  return at > 0 && at < owner.length - 1 && owner.indexOf('@', at + 1) === -1
+  return (
+    /^@[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)?$/.test(owner) ||
+    /^[^\s@,#]+@[^\s@,#]+\.[^\s@,#]+$/.test(owner)
+  )
 }
 
 /**
@@ -48,7 +49,8 @@ function isValidOwner(owner: string): boolean {
  *
  * Blank lines and comments are skipped. A pattern with no owners is kept
  * (`owners: []`) since it un-owns matching files. Like GitHub, lines with an
- * invalid owner are skipped. Section headers (`[Section]`, `^[Section]`) are a
+ * invalid owner are skipped, as are `!negation` patterns (unsupported by
+ * GitHub, they could never match anyway). Section headers (`[Section]`, `^[Section]`) are a
  * GitLab feature and are not special-cased: they are plain (literal) patterns.
  */
 export function parseCodeowners(content: string): Rule[] {
@@ -56,7 +58,7 @@ export function parseCodeowners(content: string): Rule[] {
   const lines = content.replace(/^\uFEFF/, '').split(/\r\n|\r|\n/)
   lines.forEach((text, index) => {
     const [pattern, ...owners] = tokenize(text)
-    if (pattern === undefined) return
+    if (pattern === undefined || pattern.startsWith('!')) return
     if (!owners.every(isValidOwner)) return
     rules.push({ pattern, owners, line: index + 1 })
   })

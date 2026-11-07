@@ -64,9 +64,18 @@ describe('parseCodeowners', () => {
     ['two @ in a handle', '*.js @a@b'],
     ['email without domain', '*.js a@'],
     ['email without local part', '*.js @'],
-    ['email with two @', '*.js a@b@c']
+    ['email with two @', '*.js a@b@c'],
+    ['trailing comma typo', '*.js @a, @b'],
+    ['empty team', '*.js @org/'],
+    ['nested team', '*.js @a/b/c'],
+    ['email without dot domain', '*.js a@b'],
+    ['hash in handle', '*.js @a#c']
   ])('skips lines with an invalid owner (%s)', (_name, line) => {
     expect(parseCodeowners(line)).toEqual([])
+  })
+
+  it('splits on any unicode whitespace', () => {
+    expect(parseCodeowners('*.js\u00a0@a')).toEqual([{ pattern: '*.js', owners: ['@a'], line: 1 }])
   })
 
   it('does not skip valid lines around an invalid one', () => {
@@ -78,7 +87,7 @@ describe('parseCodeowners', () => {
     expect(parseCodeowners('^[Docs]')).toEqual([{ pattern: '^[Docs]', owners: [], line: 1 }])
   })
 
-  it('keeps negation patterns as rules (they simply never match)', () => {
-    expect(parseCodeowners('!*.js @a')[0]?.pattern).toBe('!*.js')
+  it('drops negation patterns (unsupported by GitHub)', () => {
+    expect(parseCodeowners('!*.js @a')).toEqual([])
   })
 })

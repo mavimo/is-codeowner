@@ -195,8 +195,8 @@ describe('compilePattern', () => {
     expect(compilePattern('/')).toBeNull()
   })
 
-  it('returns a RegExp otherwise', () => {
-    expect(compilePattern('*.js')).toBeInstanceOf(RegExp)
+  it('returns a matcher function otherwise', () => {
+    expect(compilePattern('*.js')?.('a.js')).toBe(true)
   })
 })
 
@@ -256,7 +256,7 @@ apps/ @octocat
   })
 
   it('a negation rule never matches and so never overrides', () => {
-    const r = parseCodeowners('* @a\n!*.md @b\n')
+    const r = [...parseCodeowners('* @a'), { pattern: '!*.md', owners: ['@b'], line: 2 }]
     expect(findOwners(r, 'README.md')).toEqual(['@a'])
   })
 
@@ -276,5 +276,40 @@ apps/ @octocat
   it('works with CRLF input end-to-end', () => {
     const r = parseCodeowners('* @a\r\n/docs/ @b\r\n')
     expect(findOwners(r, 'docs/x')).toEqual(['@b'])
+  })
+})
+
+describe('review regressions', () => {
+  it.each(<Case[]>[
+    ['?.txt', '😀.txt', true],
+    ['a?b', 'a😀b', true],
+    ['a?b', 'a😀😀b', false],
+    ['**/', 'README', false],
+    ['**/', 'dir/README', true],
+    ['foo/**/', 'foo/x', false],
+    ['foo/**/', 'foo/sub/x', true],
+    ['**/**/b', 'b', true],
+    ['a/**/**/b', 'a/b', true],
+    ['a/**/**/b', 'a/x/y/b', true],
+    ['*.js', 'x.js/y', false],
+    ['a/***/b', 'a/x/b', true],
+    ['a/***/b', 'a/x/y/b', false]
+  ])('pattern %j vs path %j -> %s', (pattern, path, expected) => {
+    expect(matchesPattern(pattern, path)).toBe(expected)
+  })
+
+  it('does not backtrack catastrophically on repeated ** segments', () => {
+    const pattern = Array(25).fill('**').join('/') + '/zzz'
+    const path = Array(30).fill('a').join('/') + '/q'
+    const start = Date.now()
+    expect(matchesPattern(pattern, path)).toBe(false)
+    expect(Date.now() - start).toBeLessThan(1000)
+  })
+
+  it('does not backtrack catastrophically on many * in one segment', () => {
+    const pattern = '*a'.repeat(15) + 'b'
+    const start = Date.now()
+    expect(matchesPattern(pattern, 'a'.repeat(60))).toBe(false)
+    expect(Date.now() - start).toBeLessThan(1000)
   })
 })
