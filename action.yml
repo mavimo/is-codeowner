@@ -39,8 +39,8 @@ runs:
   using: composite
   steps:
     - name: Set up Node.js
-      # v7.1.0 pinned to a full commit SHA; the bundled dist requires Node >= 24.
-      uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+      # Pinned to a full commit SHA; the bundled dist requires Node >= 24.
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: '24'
 
@@ -60,8 +60,8 @@ runs:
     - name: Detect changed files
       id: changed
       if: steps.files.outputs.blank == 'true'
-      # v47.0.6 (released after the March 2025 CVE-2025-30066 compromise), pinned to a full commit SHA.
-      uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96
+      # Release published after the March 2025 CVE-2025-30066 compromise, pinned to a full commit SHA.
+      uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
       with:
         separator: "\n"
         # Raw names: the output is only ever passed through env vars, never interpolated into a script.
