@@ -44,9 +44,22 @@ runs:
       with:
         node-version: '24'
 
+    - name: Check whether files were provided
+      id: files
+      shell: bash
+      env:
+        INPUT_FILES: ${{ inputs.files }}
+      run: |
+        # Actions expressions have no trim(); treat whitespace-only input as blank here.
+        if [ -z "${INPUT_FILES//[[:space:]]/}" ]; then
+          echo "blank=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "blank=false" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Detect changed files
       id: changed
-      if: trim(inputs.files) == ''
+      if: steps.files.outputs.blank == 'true'
       # v47.0.6 (released after the March 2025 CVE-2025-30066 compromise), pinned to a full commit SHA.
       uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96
       with:
